@@ -5,6 +5,7 @@ import postgresql from './postgresql';
 import sqlserver from './sqlserver';
 import sqlite from './sqlite';
 import cassandra from './cassandra';
+import athena from './athena';
 
 /**
  * List of supported database clients
@@ -90,6 +91,16 @@ export const CLIENTS = [
       'cancelQuery',
     ],
   },
+  {
+    key: 'athena',
+    name: 'Amazon Athena',
+    disabledFeatures: [
+      'server:ssl',
+      'server:socketPath',
+      'server:schema',
+      'server:domain',
+    ],
+  },
 ];
 
 
@@ -99,6 +110,7 @@ export default {
   sqlserver,
   sqlite,
   cassandra,
+  athena,
   redshift: postgresql,
   mariadb: mysql,
   cockroachdb: postgresql

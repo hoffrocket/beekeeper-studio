@@ -33,7 +33,8 @@ export default {
       { name: 'SQLite', value: 'sqlite' },
       { name: 'SQL Server', value: 'sqlserver' },
       { name: 'Amazon Redshift', value: 'redshift' },
-      { name: 'CockroachDB', value: 'cockroachdb' }
+      { name: 'CockroachDB', value: 'cockroachdb' },
+      { name: 'Amazon Athena', value: 'athena' }
     ],
   },
   maxResults: 50000
