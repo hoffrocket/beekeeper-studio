@@ -30,6 +30,7 @@
               </div>
               <div v-if="config.connectionType">
                 <!-- INDIVIDUAL DB CONFIGS -->
+                <athena-form v-if="config.connectionType === 'athena'" :config="config" :testing="testing"></athena-form>
                 <postgres-form v-if="config.connectionType === 'cockroachdb'" :config="config" :testing="testing"></postgres-form>
                 <mysql-form v-if="['mysql', 'mariadb'].includes(config.connectionType)" :config="config" :testing="testing" @save="save" @test="testConnection" @connect="submit"></mysql-form>
                 <postgres-form v-if="config.connectionType === 'postgresql'" :config="config" :testing="testing"></postgres-form>
@@ -64,6 +65,7 @@
 <script>
   import os from 'os'
   import {SavedConnection} from '../common/appdb/models/saved_connection'
+  import AthenaForm from './connection/AthenaForm'
   import ConnectionSidebar from './sidebar/ConnectionSidebar'
   import MysqlForm from './connection/MysqlForm'
   import PostgresForm from './connection/PostgresForm'
@@ -77,7 +79,7 @@
   // import ImportUrlForm from './connection/ImportUrlForm';
 
   export default {
-    components: { ConnectionSidebar, MysqlForm, PostgresForm, Sidebar, SqliteForm, SqlServerForm, SaveConnectionForm, ImportButton },
+    components: { ConnectionSidebar, AthenaForm, MysqlForm, PostgresForm, Sidebar, SqliteForm, SqlServerForm, SaveConnectionForm, ImportButton },
 
     data() {
       return {

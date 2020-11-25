@@ -1,31 +1,49 @@
 // Copyright (c) 2015 The SQLECTRON Team
-import { readFileSync } from 'fs'
+import { readFileSync } from 'fs';
 
 import { identify } from 'sql-query-identifier';
+import AWS from 'aws-sdk/global';
+import Athena from 'aws-sdk/clients/athena';
+import Queue from 'async.queue';
+import _ from 'lodash'
 
 import { createCancelablePromise } from '../../../common/utils';
 import errors from '../../errors';
 import { genericSelectTop } from './utils';
 import rawLog from 'electron-log'
+
 const log = rawLog.scope('athena')
 const logger = () => log
 
-
+const ATHENA_DB = 'default'
+const ATHENA_OUTPUT_LOCATION = 's3://fwa-athena-east1/results/'
+const RESULT_SIZE = 1000
+const POLL_INTERVAL = 1000
 
 export default async function (server, database) {
   const dbConfig = configDatabase(server, database);
-  logger().debug('create driver client for athena with config %j', dbConfig);
+  logger().debug('create driver client for athena with config %j, %j', dbConfig, AWS.CredentialProviderChain.defaultProviders);
 
-  const conn = {
-    pool: mysql.createPool(dbConfig),
-  };
+  let client = new Athena({
+    region: 'us-east-1',
+    credentials: new AWS.CredentialProviderChain()
+  })
+  let q = Queue((id, cb) => {
+      startPolling(client, id)
+      .then((data) => { return cb(null, data) })
+      .catch((err) => { console.log('Failed to poll query: ', err); return cb(err) })
+  }, 5);
+  let conn = {
+    client,
+    q
+  }
 
   // light solution to test connection with with the server
-  await driverExecuteQuery(conn, { query: 'select version();' });
+  await makeQuery(conn, 'select version();');
 
   return {
     wrapIdentifier,
-    disconnect: () => disconnect(conn),
+    disconnect: () => null,
     listTables: () => listTables(conn),
     listViews: () => listViews(conn),
     listMaterializedViews: () => [],
@@ -50,11 +68,95 @@ export default async function (server, database) {
   };
 }
 
+function makeQuery(conn, sql) {
+  const { client, q } = conn;
+  return new Promise((resolve, reject) => {
+      let params = {
+          QueryString: sql,
+          ResultConfiguration: { OutputLocation: ATHENA_OUTPUT_LOCATION },
+          QueryExecutionContext: { Database: ATHENA_DB }
+      }
 
-export function disconnect(conn) {
-  conn.pool.end();
+      /* Make API call to start the query execution */
+      logger().debug("Executing a new query %j", params);
+      client.startQueryExecution(params, (err, results) => {
+          logger().debug("Got a result from athena %j, %j", err, results);
+          if (err) return reject(err)
+          /* If successful, get the query ID and queue it for polling */
+          q.push(results.QueryExecutionId, (err, qid) => {
+              if (err) return reject(err)
+              /* Once query completed executing, get and process results */
+              return buildResults(client, qid)
+              .then((data) => { return resolve(data) })
+              .catch((err) => { return reject(err) })
+          })
+      })
+  })
 }
 
+function buildResults(client, query_id, max, page) {
+  let max_num_results = max ? max : RESULT_SIZE
+  let page_token = page ? page : undefined
+  return new Promise((resolve, reject) => {
+      let params = {
+          QueryExecutionId: query_id,
+          MaxResults: max_num_results,
+          NextToken: page_token
+      }
+
+      let dataBlob = []
+      go(params)
+
+      /* Get results and iterate through all pages */
+      function go(param) {
+          getResults(param)
+          .then((res) => {
+              dataBlob = _.concat(dataBlob, res.list)
+              if (res.next) {
+                  param.NextToken = res.next
+                  return go(param)
+              } else return resolve(dataBlob)
+          }).catch((err) => { return reject(err) })
+      }
+
+      /* Process results merging column names and values into a JS object */
+      function getResults() {
+          return new Promise((resolve, reject) => {
+              client.getQueryResults(params, (err, data) => {
+                  if (err) return reject(err)
+                  var list = []
+                  let header = buildHeader(data.ResultSet.ResultSetMetadata.ColumnInfo)
+                  let top_row = _.map(_.head(data.ResultSet.Rows).Data, (n) => { return n.VarCharValue })
+                  let resultSet = (_.difference(header, top_row).length > 0) ?
+                      data.ResultSet.Rows :
+                      _.drop(data.ResultSet.Rows)
+                  resultSet.forEach((item) => {
+                      list.push(_.zipObject(header, _.map(item.Data, (n) => {return n.VarCharValue })))
+                  })
+                  return resolve({next: ('NextToken' in data) ? data.NextToken : undefined, list: list})
+              })
+          })
+      }
+  })
+}
+
+function startPolling(client, id) {
+  return new Promise((resolve, reject) => {
+      function poll(id) {
+          client.getQueryExecution({QueryExecutionId: id}, (err, data) => {
+              if (err) return reject(err)
+              if (data.QueryExecution.Status.State === 'SUCCEEDED') return resolve(id)
+              else if (['FAILED', 'CANCELLED'].includes(data.QueryExecution.Status.State)) return reject(new Error(`Query ${data.QueryExecution.Status.State}`))
+              else { setTimeout(poll, POLL_INTERVAL, id) }
+          })
+      }
+      poll(id)
+  })
+}
+
+function buildHeader(columns) {
+  return _.map(columns, (i) => { return i.Name })
+}
 
 export async function listTables(conn) {
   const sql = `
@@ -65,7 +167,7 @@ export async function listTables(conn) {
     ORDER BY table_name
   `;
 
-  const { data } = await driverExecuteQuery(conn, { query: sql });
+  const { data } = makeQuery(conn, sql)
 
   return data;
 }
@@ -246,7 +348,7 @@ export function query(conn, queryText) {
 
           return data;
         } catch (err) {
-          if (canceling && err.code === mysqlErrors.CONNECTION_LOST) {
+          if (canceling) {
             canceling = false;
             err.sqlectronError = 'CANCELED_BY_USER';
           }
@@ -508,7 +610,6 @@ function driverExecuteQuery(conn, queryArgs) {
   const runQuery = (connection) => new Promise((resolve, reject) => {
     connection.query(queryArgs.query, queryArgs.params, (err, data, fields) => {
       logger().debug(`Resolving Query ${queryArgs.query}`)
-      if (err && err.code === mysqlErrors.EMPTY_QUERY) return resolve({});
       if (err) return reject(getRealError(connection, err));
 
       resolve({ data, fields });

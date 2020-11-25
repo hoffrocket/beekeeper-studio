@@ -23,6 +23,7 @@
   },
   "main": "background.js",
   "dependencies": {
+    "async.queue": "^0.5.2",
     "cassandra-driver": "^4.4.0",
     "cli-highlight": "2.0.0",
     "codemirror": "^5.48.2",
@@ -95,7 +96,7 @@
     "@vue/cli-service": "^4.1.2",
     "@vue/eslint-config-typescript": "^5.0.2",
     "@vue/test-utils": "^1.0.3",
-    "aws-sdk": "^2.645.0",
+    "aws-sdk": "^2.799.0",
     "babel-eslint": "^10.0.1",
     "electron": "8.5.2",
     "electron-builder-notarize": "beekeeper-studio/electron-builder-notarize#master",

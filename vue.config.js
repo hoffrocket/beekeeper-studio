@@ -9,7 +9,7 @@ if (  process.env.PI_BUILD ) {
   fpmOptions.push("armhf")
 }
 
-const externals = ['sqlite3', 'sequelize', 'typeorm', 'reflect-metadata', 'cassandra-driver', 'mysql2', 'ssh2']
+const externals = ['sqlite3', 'sequelize', 'typeorm', 'reflect-metadata', 'cassandra-driver', 'mysql2', 'ssh2', 'aws-sdk']
 module.exports = {
   pluginOptions: {
     electronBuilder: {
@@ -22,7 +22,7 @@ module.exports = {
 
           .options({
             presets: [
-              ['@babel/preset-env', { 
+              ['@babel/preset-env', {
                 modules: false,
                 targets: {
                     esmodules: true
@@ -116,18 +116,19 @@ module.exports = {
       new webpack.IgnorePlugin(/pg-native/, /pg/),
       new webpack.IgnorePlugin(/kerberos/, /cassandra-driver/)
     ],
-    // externals: {
+    externals: {
+      'aws-sdk': 'aws-sdk',
     //   // Possible drivers for knex - we'll ignore them
     //   // 'sqlite3': 'sqlite3',
     //   'mariasql': 'mariasql',
     //   // 'mssql': 'mssql',
-    //   'mysql': 'mysql',
-    //   'oracle': 'oracle',
+       'mysql': 'mysql',
+      //  'oracle': 'oracle',
     //   'strong-oracle': 'strong-oracle',
-    //   'oracledb': 'oracledb',
+      'oracledb': 'oracledb',
     //   // 'pg': 'pg',
-    //   // 'pg-query-stream': 'pg-query-stream'
-    // },
+       'pg-query-stream': 'pg-query-stream'
+    },
     node: {
       dns: 'mock'
     },

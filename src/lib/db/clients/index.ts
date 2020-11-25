@@ -94,10 +94,8 @@ export const CLIENTS = [
   {
     key: 'athena',
     name: 'Amazon Athena',
+    defaultPort: 1234,
     disabledFeatures: [
-      'server:ssl',
-      'server:socketPath',
-      'server:schema',
       'server:domain',
     ],
   },
